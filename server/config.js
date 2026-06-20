@@ -1,0 +1,13 @@
+module.exports = {
+  PORT: process.env.PORT || 3000,
+  HOST: process.env.HOST || '0.0.0.0',
+  CORS_ORIGIN: process.env.CORS_ORIGIN || '*',
+  WS_PATH: '/ws',
+  MAX_PLAYERS: 5,
+  DISCUSSION_TIME: 60,
+  VOTING_TIME: 30,
+  POWER_OUTAGE_DURATION: 15,
+  POWER_OUTAGE_COOLDOWN: 60,
+  INVISIBLE_DURATION: 5,
+  INVISIBLE_COOLDOWN: 40,
+};

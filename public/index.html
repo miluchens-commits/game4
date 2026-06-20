@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>O.C 揪出搗蛋鬼</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<div id="lobbyScreen" class="screen">
+  <div class="lobby-container">
+    <h1 class="game-title">O.C 揪出搗蛋鬼</h1>
+    <p class="subtitle">太空研究站 · Alpha 測試</p>
+    <div class="name-input-area">
+      <input type="text" id="nameInput" placeholder="輸入玩家名稱..." maxlength="8">
+      <button id="joinBtn" class="btn btn-primary">加入遊戲</button>
+    </div>
+    <div class="players-list" id="playersList">
+      <div class="empty-hint">等待玩家加入...</div>
+    </div>
+    <button id="startBtn" class="btn btn-start" disabled>開始遊戲 (需 5 人)</button>
+    <div id="lobbyError" class="error-msg"></div>
+  </div>
+</div>
+
+<div id="roleScreen" class="screen hidden">
+  <div class="role-container">
+    <div class="role-reveal">
+      <div class="role-team-badge" id="roleTeamBadge">-</div>
+      <div class="role-name" id="roleName">-</div>
+      <div class="role-desc" id="roleDesc">-</div>
+      <div class="role-skill-title">技能</div>
+      <div class="role-skill" id="roleSkill">-</div>
+      <button id="roleConfirmBtn" class="btn btn-primary">確認，出發！</button>
+    </div>
+  </div>
+</div>
+
+<div id="gameScreen" class="screen hidden">
+  <div class="game-header">
+    <div class="phase-info" id="phaseInfo">遊戲進行中</div>
+    <div class="timer-info" id="timerInfo"></div>
+    <div class="round-info">第 <span id="roundNum">1</span> 回合</div>
+  </div>
+  <div class="game-main">
+    <div class="map-container" id="mapContainer3d">
+      <div id="outageText3d" class="outage-text-3d hidden">⚡ 停電中...</div>
+      <div id="fpsHud" class="fps-hud">
+        <div>WASD 移動 · 滑鼠環顧 · 點擊鎖定滑鼠</div>
+        <div id="currentRoomDisplay" class="current-room">中央大廳</div>
+      </div>
+    </div>
+    <div class="side-panel">
+      <div class="panel-section" id="playersInRoom">
+        <div class="panel-title">同區域玩家</div>
+        <div class="panel-content" id="roomPlayers">無</div>
+      </div>
+      <div class="panel-section">
+        <div class="panel-title">我的技能</div>
+        <div class="panel-content" id="skillPanel">
+          <div class="no-skill">無可用技能</div>
+        </div>
+      </div>
+      <div class="panel-section">
+        <button id="reportBtn" class="btn btn-danger btn-sm hidden">回報屍體</button>
+        <button id="emergencyBtn" class="btn btn-warning btn-sm">緊急拉鈴</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="discussionScreen" class="screen hidden">
+  <div class="discussion-container">
+    <div class="discussion-header">
+      <h2>緊急討論</h2>
+      <div class="discussion-timer" id="discussionTimer">60</div>
+    </div>
+    <div class="discussion-body">
+      <div class="chat-messages" id="chatMessages"></div>
+      <div class="chat-input-area">
+        <input type="text" id="chatInput" placeholder="輸入訊息..." maxlength="50">
+        <button id="chatSendBtn" class="btn btn-primary btn-sm">送出</button>
+      </div>
+    </div>
+    <div class="discussion-footer">
+      <button id="startVoteBtn" class="btn btn-primary">投票</button>
+    </div>
+  </div>
+</div>
+
+<div id="votingScreen" class="screen hidden">
+  <div class="voting-container">
+    <div class="voting-header">
+      <h2>投票表決</h2>
+      <div class="voting-timer" id="votingTimer">30</div>
+    </div>
+    <div class="voting-players" id="votingPlayers"></div>
+    <button id="skipVoteBtn" class="btn btn-secondary">跳過</button>
+  </div>
+</div>
+
+<div id="resultScreen" class="screen hidden">
+  <div class="result-container">
+    <div class="result-title" id="resultTitle">投票結果</div>
+    <div class="result-player" id="resultPlayer">-</div>
+    <div class="result-detail" id="resultDetail"></div>
+    <button id="continueBtn" class="btn btn-primary">繼續遊戲</button>
+  </div>
+</div>
+
+<div id="endScreen" class="screen hidden">
+  <div class="end-container">
+    <div class="end-title" id="endTitle">遊戲結束</div>
+    <div class="end-winner" id="endWinner">-</div>
+    <div class="end-players" id="endPlayers"></div>
+    <button id="playAgainBtn" class="btn btn-primary">再玩一次</button>
+  </div>
+</div>
+
+<div id="toast" class="toast hidden"></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.4/socket.io.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/renderers/CSS2DRenderer.js"></script>
+<script src="js/renderer3d.js"></script>
+<script src="js/game.js"></script>
+</body>
+</html>

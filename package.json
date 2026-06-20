@@ -1,0 +1,18 @@
+{
+  "name": "oc-catch-the-troublemaker",
+  "version": "1.0.0",
+  "description": "O.C 揪出搗蛋鬼 - 多人社交推理遊戲（太空狼人殺）",
+  "main": "server/index.js",
+  "scripts": {
+    "start": "node server/index.js",
+    "dev": "node --watch server/index.js"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "dependencies": {
+    "express": "^4.18.2",
+    "socket.io": "^4.7.4",
+    "ws": "^8.21.0"
+  }
+}
