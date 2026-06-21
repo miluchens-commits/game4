@@ -136,17 +136,22 @@ var R3D = {};
         scene.add(post);
       }
     });
-    // Corridor side walls
+    // Corridor side walls (shortened to clear door openings)
     var wallMat = new THREE.MeshStandardMaterial({ color: 0xc0c0c0, roughness: 0.6 });
-    [-1, 1].forEach(function (side) {
-      var wx = Math.cos(ang + Math.PI / 2) * side * 1.15;
-      var wz = Math.sin(ang + Math.PI / 2) * side * 1.15;
-      var w = new THREE.Mesh(new THREE.BoxGeometry(0.06, 2.8, len), wallMat);
-      w.position.set(mx + wx, 1.4, mz + wz);
-      w.rotation.y = ang;
-      w.castShadow = true;
-      scene.add(w);
-    });
+    var dirX = dx / len, dirZ = dz / len;
+    var ppX = -dirZ, ppZ = dirX;
+    var wallLen = len - 1.6;
+    if (wallLen > 0.3) {
+      [-1, 1].forEach(function (side) {
+        var wx = ppX * side * 1.15;
+        var wz = ppZ * side * 1.15;
+        var w = new THREE.Mesh(new THREE.BoxGeometry(0.06, 2.8, wallLen), wallMat);
+        w.position.set(mx + wx, 1.4, mz + wz);
+        w.rotation.y = ang;
+        w.castShadow = true;
+        scene.add(w);
+      });
+    }
   }
 
   function getDoorOuter(id, targetId) {
