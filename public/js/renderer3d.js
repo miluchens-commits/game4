@@ -15,7 +15,7 @@ var R3D = {};
   var cssRenderer = null;
   var lastTime = 0;
 
-  var ROOM_SIZE = 5, HALF_ROOM = 2.5, CLAMP = 3.0, WALL_H = 3, DOOR_W = 1.2, DOOR_H = 2.0;
+  var ROOM_SIZE = 5, HALF_ROOM = 2.5, CLAMP = 4.0, WALL_H = 3, DOOR_W = 1.5, DOOR_H = 2.0;
 
   var ROOM_CFG = {
     command:  { x: 0,   z: -10 },
@@ -23,8 +23,8 @@ var R3D = {};
     hall:     { x: 0,   z: -4 },
     comms:    { x: 7,   z: -4 },
     power:    { x: 0,   z: 3 },
-    warehouse:{ x: -6,  z: 9 },
-    dorm:     { x: 7,   z: 9 },
+    warehouse:{ x: -5,  z: 8 },
+    dorm:     { x: 6,   z: 7 },
   };
 
   var ACCENT = {
@@ -135,6 +135,17 @@ var R3D = {};
         post.position.set(px, 0.2, pz);
         scene.add(post);
       }
+    });
+    // Corridor side walls
+    var wallMat = new THREE.MeshStandardMaterial({ color: 0xc0c0c0, roughness: 0.6 });
+    [-1, 1].forEach(function (side) {
+      var wx = Math.cos(ang + Math.PI / 2) * side * 1.15;
+      var wz = Math.sin(ang + Math.PI / 2) * side * 1.15;
+      var w = new THREE.Mesh(new THREE.BoxGeometry(0.06, 2.8, len), wallMat);
+      w.position.set(mx + wx, 1.4, mz + wz);
+      w.rotation.y = ang;
+      w.castShadow = true;
+      scene.add(w);
     });
   }
 
@@ -466,7 +477,7 @@ var R3D = {};
     }
     var newPos = playerPos.clone().add(move);
 
-    // Check if player passes through a door opening to another room
+    // Door transition check
     var roomData = ROOM_CFG[currentRoomId];
     if (roomData) {
       var conns = ROOM_CONNS[currentRoomId] || [];
@@ -493,6 +504,41 @@ var R3D = {};
             break;
           }
         }
+      }
+    }
+
+    // Wall collision: push back unless at a door opening
+    if (roomData) {
+      var conns = ROOM_CONNS[currentRoomId] || [];
+      var hdw = DOOR_W / 2 + 0.05;
+      var w = HALF_ROOM;
+      // East wall (+x)
+      if (newPos.x > roomData.x + w) {
+        var hasEast = conns.some(function (t) {
+          var r = ROOM_CFG[t]; return r && r.x > roomData.x;
+        });
+        if (!hasEast || Math.abs(newPos.z - roomData.z) >= hdw) newPos.x = roomData.x + w;
+      }
+      // West wall (-x)
+      if (newPos.x < roomData.x - w) {
+        var hasWest = conns.some(function (t) {
+          var r = ROOM_CFG[t]; return r && r.x < roomData.x;
+        });
+        if (!hasWest || Math.abs(newPos.z - roomData.z) >= hdw) newPos.x = roomData.x - w;
+      }
+      // South wall (+z)
+      if (newPos.z > roomData.z + w) {
+        var hasSouth = conns.some(function (t) {
+          var r = ROOM_CFG[t]; return r && r.z > roomData.z;
+        });
+        if (!hasSouth || Math.abs(newPos.x - roomData.x) >= hdw) newPos.z = roomData.z + w;
+      }
+      // North wall (-z)
+      if (newPos.z < roomData.z - w) {
+        var hasNorth = conns.some(function (t) {
+          var r = ROOM_CFG[t]; return r && r.z < roomData.z;
+        });
+        if (!hasNorth || Math.abs(newPos.x - roomData.x) >= hdw) newPos.z = roomData.z - w;
       }
     }
 

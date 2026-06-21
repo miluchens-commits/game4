@@ -22,8 +22,8 @@ const ROOMS = [
   { id: 'hall', name: '穿堂', x: 400, y: 240 },
   { id: 'comms', name: '視聽教室', x: 650, y: 240 },
   { id: 'power', name: '體育器材室', x: 400, y: 400 },
-  { id: 'warehouse', name: '儲藏室', x: 250, y: 510 },
-  { id: 'dorm', name: '音樂教室', x: 550, y: 510 },
+  { id: 'warehouse', name: '儲藏室', x: 250, y: 550 },
+  { id: 'dorm', name: '音樂教室', x: 580, y: 520 },
 ];
 
 const CONNECTIONS = {
