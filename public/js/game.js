@@ -44,6 +44,12 @@ socket.on('error', (msg) => {
 });
 
 socket.on('gameState', (data) => {
+  if (data.type === 'kill') {
+    const target = data.players.find(p => p.id === data.targetId);
+    if (target) showToast(`${target.name} 被淘汰了！`, 'error', 3000);
+  }
+  if (data.type === 'powerOutageStart') showToast('⚡ 全區停電！持續 15 秒', 'warn', 3000);
+  if (data.type === 'powerOutageEnd') showToast('電力已恢復', 'info', 2000);
   state = data;
   handleState();
 });

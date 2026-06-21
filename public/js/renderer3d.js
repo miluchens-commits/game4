@@ -8,6 +8,7 @@ var R3D = {};
   var currentRoomId = 'hall';
   var roomMeshes = {}, playerMeshes = {};
   var clickCallback = null, animating = false;
+  var deadPos = {}, glowLight = null;
   var moveSpeed = 5, mouseSens = 0.003;
   var isLocked = false;
   var spotLight, dirLight, ambLight, hemi;
@@ -81,6 +82,10 @@ var R3D = {};
     spotLight.visible = false;
     scene.add(spotLight);
     scene.add(spotLight.target);
+    glowLight = new THREE.PointLight(0x88aaff, 0.5, 4);
+    glowLight.position.set(0, 0.15, 0);
+    glowLight.visible = false;
+    scene.add(glowLight);
 
     buildGround();
     R3D.buildMap();
@@ -515,7 +520,7 @@ var R3D = {};
     // Wall collision: push back unless at a door opening
     if (roomData) {
       var conns = ROOM_CONNS[currentRoomId] || [];
-      var hdw = DOOR_W / 2 + 0.05;
+      var hdw = DOOR_W / 2;
       var w = HALF_ROOM;
       // East wall (+x)
       if (newPos.x > roomData.x + w) {
@@ -559,10 +564,8 @@ var R3D = {};
     camera.rotation.y = yaw;
     camera.rotation.x = pitch;
 
-    if (spotLight.visible) {
-      spotLight.target.position.copy(playerPos);
-      spotLight.target.position.y = 0;
-      spotLight.position.set(playerPos.x, 12, playerPos.z);
+    if (glowLight && glowLight.visible) {
+      glowLight.position.set(playerPos.x, 0.15, playerPos.z);
     }
   }
 
@@ -597,13 +600,23 @@ var R3D = {};
 
   R3D.updatePlayers = function (players, myId) {
     Object.keys(playerMeshes).forEach(function (id) {
-      if (!players.some(function (p) { return p.id === id; })) { scene.remove(playerMeshes[id].group); delete playerMeshes[id]; }
+      if (!players.some(function (p) { return p.id === id; })) { scene.remove(playerMeshes[id].group); delete playerMeshes[id]; delete deadPos[id]; }
     });
     players.forEach(function (p, idx) {
       if (!playerMeshes[p.id]) createAvatar(p);
       var d = playerMeshes[p.id];
-      if (!p.alive) { d.group.visible = false; return; }
-      d.group.visible = p.id !== myId && p.alive;
+      if (!p.alive) {
+        d.group.visible = p.id !== myId;
+        if (!deadPos[p.id]) deadPos[p.id] = new THREE.Vector3(d.group.position.x, 0, d.group.position.z);
+        d.group.position.set(deadPos[p.id].x, -0.3, deadPos[p.id].z);
+        d.group.rotation.order = 'YXZ';
+        d.group.rotation.x = -Math.PI / 2;
+        d.group.rotation.y = 0;
+        return;
+      }
+      d.group.visible = p.id !== myId;
+      d.group.rotation.x = 0;
+      delete deadPos[p.id];
       var pos = ROOM_CFG[p.room] || ROOM_CFG['hall'];
       var tx = pos.x + (idx % 3 - 1) * 0.4, tz = pos.z + Math.floor(idx / 3) * 0.4;
       d.group.position.x += (tx - d.group.position.x) * 0.15;
@@ -620,15 +633,17 @@ var R3D = {};
 
   R3D.setPowerOutage = function (active, team) {
     if (active && team !== 'bad') {
-      scene.background = new THREE.Color(0x000011);
-      scene.fog = new THREE.Fog(0x000011, 4, 15);
-      ambLight.intensity = 0.05; dirLight.intensity = 0.05;
-      spotLight.visible = true;
+      scene.background = new THREE.Color(0x000000);
+      scene.fog = new THREE.Fog(0x000000, 1.5, 5);
+      ambLight.intensity = 0.02; dirLight.intensity = 0.02;
+      spotLight.visible = false;
+      glowLight.visible = true;
     } else {
       scene.background = new THREE.Color(0x87ceeb);
       scene.fog = new THREE.Fog(0x87ceeb, 25, 40);
       ambLight.intensity = 0.9; dirLight.intensity = 1.2;
       spotLight.visible = false;
+      glowLight.visible = false;
     }
   };
 
