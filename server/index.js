@@ -17,13 +17,13 @@ app.use(express.static('public'));
 const wsClients = new Map(); // wsClientId -> { ws, name, gameRef }
 
 const ROOMS = [
-  { id: 'command', name: '指揮中心', x: 400, y: 80 },
-  { id: 'medical', name: '醫療室', x: 150, y: 240 },
-  { id: 'hall', name: '中央大廳', x: 400, y: 240 },
-  { id: 'comms', name: '通訊室', x: 650, y: 240 },
-  { id: 'power', name: '發電室', x: 400, y: 400 },
-  { id: 'warehouse', name: '倉庫', x: 250, y: 510 },
-  { id: 'dorm', name: '宿舍', x: 550, y: 510 },
+  { id: 'command', name: '校長室', x: 400, y: 80 },
+  { id: 'medical', name: '保健室', x: 150, y: 240 },
+  { id: 'hall', name: '穿堂', x: 400, y: 240 },
+  { id: 'comms', name: '視聽教室', x: 650, y: 240 },
+  { id: 'power', name: '體育器材室', x: 400, y: 400 },
+  { id: 'warehouse', name: '儲藏室', x: 250, y: 510 },
+  { id: 'dorm', name: '音樂教室', x: 550, y: 510 },
 ];
 
 const CONNECTIONS = {

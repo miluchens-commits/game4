@@ -12,11 +12,12 @@ var R3D = {};
   var isLocked = false;
   var spotLight, dirLight, ambLight, hemi;
   var transitionProgress = -1;
-  var transitionFrom = null, transitionTo = null;
+  var transitionTo = null;
   var transitionStartPos = new THREE.Vector3(), transitionEndPos = new THREE.Vector3();
   var lockInstructionEl = null;
   var cssRenderer = null;
   var lastTime = 0;
+  var outdoorDecor = [];
 
   var ROOM_SIZE = 4, HALF_ROOM = 2, CLAMP = 1.95, WALL_H = 3;
 
@@ -26,13 +27,19 @@ var R3D = {};
     warehouse: { x: -6, z: 6 }, power: { x: 0, z: 6 }, dorm: { x: 6, z: 6 },
   };
 
-  var SPAWN_ROOMS = {
-    1: 'hall', 2: 'command', 3: 'medical', 4: 'comms', 5: 'power',
+  var ROOM_DISPLAY = {
+    command: '校長室', medical: '保健室', hall: '穿堂',
+    comms: '視聽教室', power: '體育器材室', warehouse: '儲藏室', dorm: '音樂教室',
   };
 
-  var RAINBOW = {
-    command: 0xff1744, medical: 0xff9100, hall: 0xffea00,
-    comms: 0x00e676, power: 0x2979ff, warehouse: 0x651fff, dorm: 0xd500f9,
+  var WALL_COLORS = {
+    command: 0xfff8e7, medical: 0xfff8e7, hall: 0xfff8e7,
+    comms: 0xfff8e7, power: 0xfff8e7, warehouse: 0xfff8e7, dorm: 0xfff8e7,
+  };
+
+  var ACCENT_COLORS = {
+    command: 0x8b0000, medical: 0xff6b6b, hall: 0x4a90d9,
+    comms: 0x9b59b6, power: 0xe67e22, warehouse: 0x7f8c8d, dorm: 0x2ecc71,
   };
 
   var PLAYER_COLORS = [0xe53935, 0x43a047, 0x1e88e5, 0xfb8c00, 0x8e24aa];
@@ -43,15 +50,11 @@ var R3D = {};
     power: ['hall', 'warehouse', 'dorm'], warehouse: ['power'], dorm: ['power'],
   };
 
-  var ROOM_NAMES = {
-    command: '指揮中心', medical: '醫療室', hall: '中央大廳',
-    comms: '通訊室', power: '發電室', warehouse: '倉庫', dorm: '宿舍',
-  };
-
   R3D.init = function (el) {
     container = el;
     scene = new THREE.Scene();
     scene.background = new THREE.Color(0x87ceeb);
+    scene.fog = new THREE.Fog(0x87ceeb, 20, 35);
 
     var w = container.clientWidth, h = container.clientHeight;
     camera = new THREE.PerspectiveCamera(75, w / h, 0.05, 40);
@@ -65,12 +68,12 @@ var R3D = {};
     renderer.toneMappingExposure = 1.5;
     container.appendChild(renderer.domElement);
 
-    ambLight = new THREE.AmbientLight(0xffffff, 1.2);
+    ambLight = new THREE.AmbientLight(0xffeedd, 0.9);
     scene.add(ambLight);
-    dirLight = new THREE.DirectionalLight(0xffffff, 1.5);
-    dirLight.position.set(10, 20, 5);
+    dirLight = new THREE.DirectionalLight(0xfff5e6, 1.2);
+    dirLight.position.set(15, 25, 10);
     scene.add(dirLight);
-    hemi = new THREE.HemisphereLight(0x87ceeb, 0x98fb98, 0.6);
+    hemi = new THREE.HemisphereLight(0x87ceeb, 0x98fb98, 0.5);
     scene.add(hemi);
     spotLight = new THREE.SpotLight(0x88bbff, 8, 15, Math.PI / 4, 0.5, 1);
     spotLight.position.set(0, 12, 0);
@@ -79,20 +82,37 @@ var R3D = {};
     scene.add(spotLight);
     scene.add(spotLight.target);
 
-    var groundMat = new THREE.MeshStandardMaterial({ color: 0x90ee90, roughness: 0.8 });
+    buildGround();
+    R3D.buildMap();
+    buildOutdoorDecor();
+    setupControls();
+  };
+
+  function buildGround() {
+    var groundMat = new THREE.MeshStandardMaterial({ color: 0x7ec850, roughness: 0.9 });
     var ground = new THREE.Mesh(new THREE.PlaneGeometry(40, 40), groundMat);
     ground.rotation.x = -Math.PI / 2;
     ground.position.y = -0.05;
     ground.receiveShadow = true;
     scene.add(ground);
 
-    R3D.buildMap();
-    setupControls();
-  };
+    var pathMat = new THREE.MeshStandardMaterial({ color: 0xc8c8c8, roughness: 0.8 });
+    var pw = new THREE.Mesh(new THREE.BoxGeometry(2.5, 0.06, 16), pathMat);
+    pw.position.set(0, 0.03, -4.5);
+    pw.receiveShadow = true;
+    scene.add(pw);
+    var pw2 = new THREE.Mesh(new THREE.BoxGeometry(14, 0.06, 2.5), pathMat);
+    pw2.position.set(0, 0.03, 0);
+    pw2.receiveShadow = true;
+    scene.add(pw2);
+    var pw3 = new THREE.Mesh(new THREE.BoxGeometry(2.5, 0.06, 5), pathMat);
+    pw3.position.set(0, 0.03, 8.5);
+    pw3.receiveShadow = true;
+    scene.add(pw3);
+  }
 
   R3D.buildMap = function () {
     Object.entries(ROOM_CFG).forEach(function (_a) { buildRoom(_a[0], _a[1]); });
-    // Build corridor paths between connected rooms
     Object.keys(ROOM_CONNS).forEach(function (from) {
       ROOM_CONNS[from].forEach(function (to) {
         if (from < to) buildPath(from, to);
@@ -106,49 +126,120 @@ var R3D = {};
     var dist = Math.sqrt(dx * dx + dz * dz);
     if (dist < 4.1) return;
 
-    var pathW = 1.5;
-    var pMat = new THREE.MeshStandardMaterial({ color: 0xbbbbbb, roughness: 0.7 });
+    var pathW = 1.6;
+    var pMat = new THREE.MeshStandardMaterial({ color: 0xd0d0d0, roughness: 0.8 });
+    var lineMat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.15 });
 
     if (Math.abs(dx) > Math.abs(dz)) {
       var left = Math.min(a.x, b.x) + HALF_ROOM;
       var right = Math.max(a.x, b.x) - HALF_ROOM;
       var pLen = right - left;
       if (pLen < 0.3) return;
-      var p = new THREE.Mesh(new THREE.BoxGeometry(pLen, 0.1, pathW), pMat);
-      p.position.set((left + right) / 2, 0.05, a.z);
+      var p = new THREE.Mesh(new THREE.BoxGeometry(pLen, 0.08, pathW), pMat);
+      p.position.set((left + right) / 2, 0.04, a.z);
       p.receiveShadow = true;
       scene.add(p);
+      var dash = new THREE.Mesh(new THREE.BoxGeometry(pLen - 0.4, 0.02, 0.04), lineMat);
+      dash.position.set((left + right) / 2, 0.08, a.z);
+      scene.add(dash);
+      for (var lx = left + 0.5; lx < right - 0.3; lx += 1.5) {
+        var post = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.04, 0.4, 6), new THREE.MeshStandardMaterial({ color: 0x888888 }));
+        post.position.set(lx, 0.2, a.z + 1.1);
+        scene.add(post);
+        outdoorDecor.push(post);
+        post = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.04, 0.4, 6), new THREE.MeshStandardMaterial({ color: 0x888888 }));
+        post.position.set(lx, 0.2, a.z - 1.1);
+        scene.add(post);
+        outdoorDecor.push(post);
+      }
     } else {
       var bot = Math.min(a.z, b.z) + HALF_ROOM;
       var top = Math.max(a.z, b.z) - HALF_ROOM;
       var pLen = top - bot;
       if (pLen < 0.3) return;
-      var p = new THREE.Mesh(new THREE.BoxGeometry(pathW, 0.1, pLen), pMat);
-      p.position.set(a.x, 0.05, (bot + top) / 2);
+      var p = new THREE.Mesh(new THREE.BoxGeometry(pathW, 0.08, pLen), pMat);
+      p.position.set(a.x, 0.04, (bot + top) / 2);
       p.receiveShadow = true;
       scene.add(p);
+      var dash = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.02, pLen - 0.4), lineMat);
+      dash.position.set(a.x, 0.08, (bot + top) / 2);
+      scene.add(dash);
+      for (var lz = bot + 0.5; lz < top - 0.3; lz += 1.5) {
+        var post = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.04, 0.4, 6), new THREE.MeshStandardMaterial({ color: 0x888888 }));
+        post.position.set(a.x + 1.1, 0.2, lz);
+        scene.add(post);
+        outdoorDecor.push(post);
+        post = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.04, 0.4, 6), new THREE.MeshStandardMaterial({ color: 0x888888 }));
+        post.position.set(a.x - 1.1, 0.2, lz);
+        scene.add(post);
+        outdoorDecor.push(post);
+      }
     }
   }
 
   function buildRoom(id, pos) {
-    var color = RAINBOW[id] || 0x888888;
-    var cObj = new THREE.Color(color);
+    var wallColor = WALL_COLORS[id] || 0xfff8e7;
+    var accent = ACCENT_COLORS[id] || 0x888888;
     var room = new THREE.Group();
     room.position.set(pos.x, 0, pos.z);
 
-    var fMat = new THREE.MeshStandardMaterial({ color: cObj, roughness: 0.4, metalness: 0.1, emissive: cObj, emissiveIntensity: 0.15 });
-    var floor = new THREE.Mesh(new THREE.BoxGeometry(ROOM_SIZE, 0.1, ROOM_SIZE), fMat);
-    floor.position.y = 0.05;
-    floor.receiveShadow = true;
-    room.add(floor);
+    buildFloor(room, accent);
+    buildCeiling(room);
+    buildWalls(room, id, pos, wallColor, accent);
+    addCeilingLight(room, accent);
+    addDecoration(room, id, accent);
+    addRoomLabel(room, id);
 
-    var cMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.3, metalness: 0.3, transparent: true, opacity: 0.15 });
-    var ceil = new THREE.Mesh(new THREE.BoxGeometry(ROOM_SIZE + 0.4, 0.05, ROOM_SIZE + 0.4), cMat);
+    scene.add(room);
+    roomMeshes[id] = { group: room, pos: pos, bodyGrp: null };
+
+    var bMat = new THREE.MeshStandardMaterial({ color: 0xff0000, emissive: 0xff0000, emissiveIntensity: 1 });
+    var body = new THREE.Mesh(new THREE.SphereGeometry(0.15, 8, 8), bMat);
+    body.position.set(0, 0.1, -1);
+    var bodyGrp = new THREE.Group();
+    bodyGrp.add(body);
+    bodyGrp.visible = false;
+    room.add(bodyGrp);
+    roomMeshes[id].bodyGrp = bodyGrp;
+  }
+
+  function buildFloor(room, accent) {
+    var tileMat = new THREE.MeshStandardMaterial({ color: 0xe8dcc8, roughness: 0.6 });
+    var groutMat = new THREE.MeshStandardMaterial({ color: 0xc8b898, roughness: 0.8 });
+    for (var tx = -1.5; tx <= 1.5; tx += 1) {
+      for (var tz = -1.5; tz <= 1.5; tz += 1) {
+        var tile = new THREE.Mesh(new THREE.BoxGeometry(0.88, 0.06, 0.88), tileMat);
+        tile.position.set(tx, 0.03, tz);
+        tile.receiveShadow = true;
+        room.add(tile);
+      }
+    }
+    var borderMat = new THREE.MeshStandardMaterial({ color: accent, roughness: 0.5 });
+    var brd = new THREE.Mesh(new THREE.BoxGeometry(ROOM_SIZE + 0.2, 0.04, 0.12), borderMat);
+    brd.position.set(0, 0.07, 2.06);
+    room.add(brd);
+    brd = new THREE.Mesh(new THREE.BoxGeometry(ROOM_SIZE + 0.2, 0.04, 0.12), borderMat);
+    brd.position.set(0, 0.07, -2.06);
+    room.add(brd);
+    brd = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.04, ROOM_SIZE + 0.2), borderMat);
+    brd.position.set(2.06, 0.07, 0);
+    room.add(brd);
+    brd = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.04, ROOM_SIZE + 0.2), borderMat);
+    brd.position.set(-2.06, 0.07, 0);
+    room.add(brd);
+  }
+
+  function buildCeiling(room) {
+    var ceilMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.6, transparent: true, opacity: 0.2 });
+    var ceil = new THREE.Mesh(new THREE.BoxGeometry(ROOM_SIZE + 0.4, 0.05, ROOM_SIZE + 0.4), ceilMat);
     ceil.position.y = WALL_H;
     room.add(ceil);
+  }
 
-    var wallBright = cObj.clone().lerp(new THREE.Color(0xffffff), 0.3);
-    var wMat = new THREE.MeshStandardMaterial({ color: wallBright, roughness: 0.4, metalness: 0.1 });
+  function buildWalls(room, id, pos, wallColor, accent) {
+    var wMat = new THREE.MeshStandardMaterial({ color: wallColor, roughness: 0.5 });
+    var baseMat = new THREE.MeshStandardMaterial({ color: 0x5d4037, roughness: 0.6 });
+    var frameMat = new THREE.MeshStandardMaterial({ color: accent, roughness: 0.5 });
     var conns = ROOM_CONNS[id] || [];
     var dirs = [
       { axis: 'z', sign: -1, connCheck: function (to) { return ROOM_CFG[to] && ROOM_CFG[to].z < pos.z; } },
@@ -164,56 +255,199 @@ var R3D = {};
       if (d.axis === 'z') {
         var wz = d.sign * HALF_ROOM;
         if (hasDoor) {
-          // Left piece: from -HALF_ROOM to -doorW/2
           addWall(room, new THREE.Vector3(-(HALF_ROOM + hdw) / 2, WALL_H / 2, wz), new THREE.Vector3(HALF_ROOM - hdw, WALL_H, 0.1), wMat);
-          // Right piece: from doorW/2 to HALF_ROOM
           addWall(room, new THREE.Vector3((HALF_ROOM + hdw) / 2, WALL_H / 2, wz), new THREE.Vector3(HALF_ROOM - hdw, WALL_H, 0.1), wMat);
-          // Top piece: above door
           addWall(room, new THREE.Vector3(0, (WALL_H + doorH) / 2, wz), new THREE.Vector3(doorW, WALL_H - doorH, 0.1), wMat);
+          addWall(room, new THREE.Vector3(0, 0.1, wz), new THREE.Vector3(ROOM_SIZE, 0.15, 0.12), baseMat);
+          addWall(room, new THREE.Vector3(-hdw - 0.06, doorH / 2, wz), new THREE.Vector3(0.08, doorH, 0.16), frameMat);
+          addWall(room, new THREE.Vector3(hdw + 0.06, doorH / 2, wz), new THREE.Vector3(0.08, doorH, 0.16), frameMat);
+          addWall(room, new THREE.Vector3(0, doorH + 0.04, wz), new THREE.Vector3(doorW + 0.12, 0.08, 0.16), frameMat);
         } else {
           addWall(room, new THREE.Vector3(0, WALL_H / 2, wz), new THREE.Vector3(ROOM_SIZE, WALL_H, 0.1), wMat);
+          addWall(room, new THREE.Vector3(0, 0.1, wz), new THREE.Vector3(ROOM_SIZE, 0.15, 0.12), baseMat);
         }
       } else {
         var wx = d.sign * HALF_ROOM;
         if (hasDoor) {
-          // Bottom piece: from -HALF_ROOM to -doorW/2
           addWall(room, new THREE.Vector3(wx, WALL_H / 2, -(HALF_ROOM + hdw) / 2), new THREE.Vector3(0.1, WALL_H, HALF_ROOM - hdw), wMat);
-          // Top piece: from doorW/2 to HALF_ROOM
           addWall(room, new THREE.Vector3(wx, WALL_H / 2, (HALF_ROOM + hdw) / 2), new THREE.Vector3(0.1, WALL_H, HALF_ROOM - hdw), wMat);
-          // Top piece: above door
           addWall(room, new THREE.Vector3(wx, (WALL_H + doorH) / 2, 0), new THREE.Vector3(0.1, WALL_H - doorH, doorW), wMat);
+          addWall(room, new THREE.Vector3(wx, 0.1, 0), new THREE.Vector3(0.12, 0.15, ROOM_SIZE), baseMat);
+          addWall(room, new THREE.Vector3(wx, doorH / 2, -hdw - 0.06), new THREE.Vector3(0.16, doorH, 0.08), frameMat);
+          addWall(room, new THREE.Vector3(wx, doorH / 2, hdw + 0.06), new THREE.Vector3(0.16, doorH, 0.08), frameMat);
+          addWall(room, new THREE.Vector3(wx, doorH + 0.04, 0), new THREE.Vector3(0.16, 0.08, doorW + 0.12), frameMat);
         } else {
           addWall(room, new THREE.Vector3(wx, WALL_H / 2, 0), new THREE.Vector3(0.1, WALL_H, ROOM_SIZE), wMat);
+          addWall(room, new THREE.Vector3(wx, 0.1, 0), new THREE.Vector3(0.12, 0.15, ROOM_SIZE), baseMat);
         }
       }
     });
+  }
 
-    var rl = new THREE.PointLight(0xffffff, 1.2, 8);
-    rl.position.set(0, WALL_H - 0.3, 0);
+  function addCeilingLight(room, accent) {
+    var lMat = new THREE.MeshStandardMaterial({ color: 0xffffee, emissive: 0xffffff, emissiveIntensity: 0.3 });
+    var light = new THREE.Mesh(new THREE.CylinderGeometry(0.15, 0.2, 0.05, 8), lMat);
+    light.position.set(0, WALL_H - 0.05, 0);
+    room.add(light);
+    var rl = new THREE.PointLight(0xffffee, 1.0, 7);
+    rl.position.set(0, WALL_H - 0.2, 0);
     room.add(rl);
+  }
 
-    var bodyGrp = new THREE.Group();
-    var body = new THREE.Mesh(new THREE.SphereGeometry(0.15, 8, 8), new THREE.MeshStandardMaterial({ color: 0xff0000, emissive: 0xff0000, emissiveIntensity: 1 }));
-    body.position.set(0, 0.1, -1);
-    bodyGrp.add(body);
-    bodyGrp.visible = false;
-    room.add(bodyGrp);
-
+  function addRoomLabel(room, id) {
     var ld = document.createElement('div');
-    ld.textContent = ROOM_NAMES[id] || id;
-    ld.style.cssText = 'color:#fff;font-size:12px;font-weight:700;font-family:"Noto Sans TC",sans-serif;text-shadow:0 0 15px rgba(0,0,0,0.8);background:rgba(0,0,0,0.3);padding:2px 12px;border-radius:4px;letter-spacing:1px;border:1px solid rgba(255,255,255,0.2);pointer-events:none;';
+    ld.textContent = ROOM_DISPLAY[id] || id;
+    ld.style.cssText = 'color:#fff;font-size:13px;font-weight:700;font-family:"Noto Sans TC",sans-serif;text-shadow:0 0 15px rgba(0,0,0,0.8);background:rgba(0,0,0,0.35);padding:2px 14px;border-radius:4px;letter-spacing:1px;border:1px solid rgba(255,255,255,0.2);pointer-events:none;';
     var label = new THREE.CSS2DObject(ld);
-    label.position.set(0, WALL_H + 0.3, 0);
+    label.position.set(0, WALL_H + 0.5, 0);
     room.add(label);
+  }
 
-    if (id === 'hall') {
-      var eb = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.25, 0.15, 12), new THREE.MeshStandardMaterial({ color: 0xff4400, emissive: 0xff2200, emissiveIntensity: 1 }));
-      eb.position.set(0, 0.2, 1.5);
-      room.add(eb);
+  function addDecoration(room, id, accent) {
+    var decoMat = new THREE.MeshStandardMaterial({ color: accent, roughness: 0.5 });
+    var darkMat = new THREE.MeshStandardMaterial({ color: 0x5d4037, roughness: 0.7 });
+    var whiteMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.4 });
+
+    switch (id) {
+      case 'command':
+        var desk = new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.6, 0.4), darkMat);
+        desk.position.set(0.8, 0.3, 0.8);
+        room.add(desk);
+        var top = new THREE.Mesh(new THREE.BoxGeometry(0.85, 0.04, 0.45), new THREE.MeshStandardMaterial({ color: 0x8d6e63 }));
+        top.position.set(0.8, 0.62, 0.8);
+        room.add(top);
+        var flag = new THREE.Mesh(new THREE.BoxGeometry(0.01, 0.3, 0.15), new THREE.MeshStandardMaterial({ color: accent }));
+        flag.position.set(-1.0, 0.4, -1.2);
+        room.add(flag);
+        var pole = new THREE.Mesh(new THREE.CylinderGeometry(0.015, 0.015, 0.4, 4), darkMat);
+        pole.position.set(-1.0, 0.2, -1.2);
+        room.add(pole);
+        break;
+      case 'medical':
+        var bed = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.2, 1.0), whiteMat);
+        bed.position.set(-0.6, 0.1, 0);
+        room.add(bed);
+        var pillow = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.08, 0.2), new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.9 }));
+        pillow.position.set(-0.6, 0.24, -0.35);
+        room.add(pillow);
+        var cross = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.25, 0.02), new THREE.MeshStandardMaterial({ color: 0xff0000 }));
+        cross.position.set(1.2, 0.8, -1.0);
+        room.add(cross);
+        var cross2 = new THREE.Mesh(new THREE.BoxGeometry(0.25, 0.2, 0.02), new THREE.MeshStandardMaterial({ color: 0xff0000 }));
+        cross2.position.set(1.2, 0.8, -1.0);
+        room.add(cross2);
+        break;
+      case 'hall':
+        var board = new THREE.Mesh(new THREE.BoxGeometry(0.9, 0.4, 0.04), new THREE.MeshStandardMaterial({ color: 0x2e7d32 }));
+        board.position.set(0, 1.0, -1.95);
+        room.add(board);
+        var frame = new THREE.Mesh(new THREE.BoxGeometry(0.94, 0.44, 0.02), darkMat);
+        frame.position.set(0, 1.0, -1.92);
+        room.add(frame);
+        break;
+      case 'comms':
+        var screen = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.4, 0.04), new THREE.MeshStandardMaterial({ color: 0x1a237e, emissive: 0x1a237e, emissiveIntensity: 0.1 }));
+        screen.position.set(-0.5, 0.8, -1.4);
+        room.add(screen);
+        var stand = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.03, 0.3, 6), darkMat);
+        stand.position.set(-0.5, 0.25, -1.4);
+        room.add(stand);
+        var base = new THREE.Mesh(new THREE.BoxGeometry(0.15, 0.03, 0.12), darkMat);
+        base.position.set(-0.5, 0.1, -1.4);
+        room.add(base);
+        break;
+      case 'power':
+        var rackMat = new THREE.MeshStandardMaterial({ color: 0x616161, roughness: 0.7 });
+        for (var ri = 0; ri < 3; ri++) {
+          var shelf = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.02, 0.4), new THREE.MeshStandardMaterial({ color: 0x757575 }));
+          shelf.position.set(-1.0 + ri * 0.35, 0.15 + ri * 0.25, 1.2);
+          room.add(shelf);
+        }
+        break;
+      case 'warehouse':
+        var boxMat = new THREE.MeshStandardMaterial({ color: 0xa1887f, roughness: 0.8 });
+        for (var bx = -0.5; bx <= 0.5; bx += 1.0) {
+          for (var bz = 0.5; bz <= 1.0; bz += 0.5) {
+            var box = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.2, 0.3), boxMat);
+            box.position.set(bx, 0.1 + bz * 0.1, bz * 0.8);
+            room.add(box);
+          }
+        }
+        break;
+      case 'dorm':
+        var pianoMat = new THREE.MeshStandardMaterial({ color: 0x212121, roughness: 0.3 });
+        var piano = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.35, 0.4), pianoMat);
+        piano.position.set(-0.8, 0.18, -1.0);
+        room.add(piano);
+        var keys = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.03, 0.12), whiteMat);
+        keys.position.set(-0.8, 0.36, -0.82);
+        room.add(keys);
+        var benchMat = new THREE.MeshStandardMaterial({ color: 0x5d4037, roughness: 0.7 });
+        var bench = new THREE.Mesh(new THREE.BoxGeometry(0.35, 0.15, 0.2), benchMat);
+        bench.position.set(-0.8, 0.08, -1.6);
+        room.add(bench);
+        break;
     }
 
-    scene.add(room);
-    roomMeshes[id] = { group: room, pos: pos, bodyGrp: bodyGrp };
+    var noticeMat = new THREE.MeshStandardMaterial({ color: 0xfff9c4 });
+    var note = new THREE.Mesh(new THREE.BoxGeometry(0.15, 0.12, 0.02), noticeMat);
+    note.position.set(1.2, 0.6, -1.95);
+    room.add(note);
+  }
+
+  function buildOutdoorDecor() {
+    var treePos = [
+      [-10, -2], [10, -2], [-10, 10], [10, 10], [-3, -13], [3, -13],
+      [-10, 5], [10, 5], [-7, -8], [7, -8], [-8, 14], [8, 14],
+    ];
+    treePos.forEach(function (p) { makeTree(p[0], p[1]); });
+    var fenceMat = new THREE.MeshStandardMaterial({ color: 0x8d6e63, roughness: 0.7 });
+    var fencePos = [
+      [-12, 0, 0, 24], [12, 0, 0, 24], [0, -14, 1, 18], [0, 14, 1, 18],
+    ];
+    fencePos.forEach(function (f) {
+      var horizontal = f[2];
+      if (horizontal) {
+        var rail = new THREE.Mesh(new THREE.BoxGeometry(f[3], 0.06, 0.04), fenceMat);
+        rail.position.set(f[0], 0.3, f[1]);
+        scene.add(rail);
+        rail = new THREE.Mesh(new THREE.BoxGeometry(f[3], 0.06, 0.04), fenceMat);
+        rail.position.set(f[0], 0.7, f[1]);
+        scene.add(rail);
+        for (var pi = -f[3]/2 + 0.3; pi < f[3]/2 - 0.3; pi += 0.6) {
+          var post = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.8, 0.04), fenceMat);
+          post.position.set(f[0] + pi, 0.4, f[1]);
+          scene.add(post);
+        }
+      } else {
+        var rail = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.06, f[3]), fenceMat);
+        rail.position.set(f[0], 0.3, f[1]);
+        scene.add(rail);
+        rail = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.06, f[3]), fenceMat);
+        rail.position.set(f[0], 0.7, f[1]);
+        scene.add(rail);
+        for (var pi2 = -f[3]/2 + 0.3; pi2 < f[3]/2 - 0.3; pi2 += 0.6) {
+          var post = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.8, 0.04), fenceMat);
+          post.position.set(f[0], 0.4, f[1] + pi2);
+          scene.add(post);
+        }
+      }
+    });
+  }
+
+  function makeTree(x, z) {
+    var trunkMat = new THREE.MeshStandardMaterial({ color: 0x6d4c41, roughness: 0.9 });
+    var leafMat = new THREE.MeshStandardMaterial({ color: 0x4caf50, roughness: 0.8 });
+    var trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.08, 0.6, 6), trunkMat);
+    trunk.position.set(x, 0.3, z);
+    scene.add(trunk);
+    var leaf1 = new THREE.Mesh(new THREE.ConeGeometry(0.35, 0.35, 6), leafMat);
+    leaf1.position.set(x, 0.7, z);
+    scene.add(leaf1);
+    var leaf2 = new THREE.Mesh(new THREE.ConeGeometry(0.25, 0.3, 6), new THREE.MeshStandardMaterial({ color: 0x66bb6a, roughness: 0.8 }));
+    leaf2.position.set(x, 0.95, z);
+    scene.add(leaf2);
+    outdoorDecor.push(trunk, leaf1, leaf2);
   }
 
   function addWall(parent, pos, scale, mat) {
@@ -321,7 +555,6 @@ var R3D = {};
       var dx = playerPos.x - wall.x;
       var dz = playerPos.z - wall.z;
       if (dx * dx + dz * dz < 0.09) {
-        transitionFrom = currentRoomId;
         transitionTo = to;
         transitionStartPos.copy(playerPos);
         transitionEndPos.set(tp.x, 1.3, tp.z);
@@ -347,7 +580,7 @@ var R3D = {};
     var bMat = new THREE.MeshStandardMaterial({ color: color, roughness: 0.3, metalness: 0.2 });
     var body = new THREE.Mesh(new THREE.CylinderGeometry(0.25, 0.3, 0.6, 8), bMat);
     body.position.y = 0.5; grp.add(body);
-    var tMat = new THREE.MeshStandardMaterial({ color: 0x4444aa });
+    var tMat = new THREE.MeshStandardMaterial({ color: 0x6688cc });
     var torso = new THREE.Mesh(new THREE.BoxGeometry(0.35, 0.25, 0.2), tMat);
     torso.position.y = 0.35; grp.add(torso);
     var head = new THREE.Mesh(new THREE.SphereGeometry(0.16, 8, 8), new THREE.MeshStandardMaterial({ color: 0xffccaa }));
@@ -392,11 +625,13 @@ var R3D = {};
   R3D.setPowerOutage = function (active, team) {
     if (active && team !== 'bad') {
       scene.background = new THREE.Color(0x000011);
+      scene.fog = new THREE.Fog(0x000011, 5, 15);
       ambLight.intensity = 0.05; dirLight.intensity = 0.05;
       spotLight.visible = true;
     } else {
       scene.background = new THREE.Color(0x87ceeb);
-      ambLight.intensity = 1.2; dirLight.intensity = 1.5;
+      scene.fog = new THREE.Fog(0x87ceeb, 20, 35);
+      ambLight.intensity = 0.9; dirLight.intensity = 1.2;
       spotLight.visible = false;
     }
   };
