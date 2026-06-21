@@ -17,19 +17,17 @@ var R3D = {};
   var lockInstructionEl = null;
   var cssRenderer = null;
   var lastTime = 0;
-  var outdoorDecor = [];
 
-  var ROOM_SIZE = 4, HALF_ROOM = 2, CLAMP = 1.95, WALL_H = 3;
+  var ROOM_SIZE = 5, HALF_ROOM = 2.5, CLAMP = 2.45, WALL_H = 3;
 
   var ROOM_CFG = {
-    command: { x: 0, z: -9 }, medical: { x: -6, z: 0 },
-    hall: { x: 0, z: 0 }, comms: { x: 6, z: 0 },
-    warehouse: { x: -6, z: 6 }, power: { x: 0, z: 6 }, dorm: { x: 6, z: 6 },
-  };
-
-  var ROOM_DISPLAY = {
-    command: '校長室', medical: '保健室', hall: '穿堂',
-    comms: '視聽教室', power: '體育器材室', warehouse: '儲藏室', dorm: '音樂教室',
+    command:  { x: 0,   z: -13 },
+    medical:  { x: -10, z: -4 },
+    hall:     { x: 0,   z: -4 },
+    comms:    { x: 12,  z: -4 },
+    power:    { x: -1,  z: 7 },
+    warehouse:{ x: -10, z: 13 },
+    dorm:     { x: 9,   z: 13 },
   };
 
   var WALL_COLORS = {
@@ -37,9 +35,14 @@ var R3D = {};
     comms: 0xfff8e7, power: 0xfff8e7, warehouse: 0xfff8e7, dorm: 0xfff8e7,
   };
 
+  var FLOOR_COLORS = {
+    command: 0x8b6914, medical: 0xffffff, hall: 0xc8b898,
+    comms: 0x546e7a, power: 0x616161, warehouse: 0x9e9e9e, dorm: 0x8d6e63,
+  };
+
   var ACCENT_COLORS = {
-    command: 0x8b0000, medical: 0xff6b6b, hall: 0x4a90d9,
-    comms: 0x9b59b6, power: 0xe67e22, warehouse: 0x7f8c8d, dorm: 0x2ecc71,
+    command: 0x8b0000, medical: 0xff6b6b, hall: 0x1565c0,
+    comms: 0x7b1fa2, power: 0xef6c00, warehouse: 0x546e7a, dorm: 0x2e7d32,
   };
 
   var PLAYER_COLORS = [0xe53935, 0x43a047, 0x1e88e5, 0xfb8c00, 0x8e24aa];
@@ -50,14 +53,19 @@ var R3D = {};
     power: ['hall', 'warehouse', 'dorm'], warehouse: ['power'], dorm: ['power'],
   };
 
+  var ROOM_DISPLAY = {
+    command: '校長室', medical: '保健室', hall: '穿堂',
+    comms: '視聽教室', power: '體育器材室', warehouse: '儲藏室', dorm: '音樂教室',
+  };
+
   R3D.init = function (el) {
     container = el;
     scene = new THREE.Scene();
     scene.background = new THREE.Color(0x87ceeb);
-    scene.fog = new THREE.Fog(0x87ceeb, 20, 35);
+    scene.fog = new THREE.Fog(0x87ceeb, 25, 40);
 
     var w = container.clientWidth, h = container.clientHeight;
-    camera = new THREE.PerspectiveCamera(75, w / h, 0.05, 40);
+    camera = new THREE.PerspectiveCamera(75, w / h, 0.05, 45);
 
     renderer = new THREE.WebGLRenderer({ antialias: true });
     renderer.setSize(w, h);
@@ -89,26 +97,12 @@ var R3D = {};
   };
 
   function buildGround() {
-    var groundMat = new THREE.MeshStandardMaterial({ color: 0x7ec850, roughness: 0.9 });
-    var ground = new THREE.Mesh(new THREE.PlaneGeometry(40, 40), groundMat);
+    var gMat = new THREE.MeshStandardMaterial({ color: 0x7ec850, roughness: 0.9 });
+    var ground = new THREE.Mesh(new THREE.PlaneGeometry(50, 50), gMat);
     ground.rotation.x = -Math.PI / 2;
     ground.position.y = -0.05;
     ground.receiveShadow = true;
     scene.add(ground);
-
-    var pathMat = new THREE.MeshStandardMaterial({ color: 0xc8c8c8, roughness: 0.8 });
-    var pw = new THREE.Mesh(new THREE.BoxGeometry(2.5, 0.06, 16), pathMat);
-    pw.position.set(0, 0.03, -4.5);
-    pw.receiveShadow = true;
-    scene.add(pw);
-    var pw2 = new THREE.Mesh(new THREE.BoxGeometry(14, 0.06, 2.5), pathMat);
-    pw2.position.set(0, 0.03, 0);
-    pw2.receiveShadow = true;
-    scene.add(pw2);
-    var pw3 = new THREE.Mesh(new THREE.BoxGeometry(2.5, 0.06, 5), pathMat);
-    pw3.position.set(0, 0.03, 8.5);
-    pw3.receiveShadow = true;
-    scene.add(pw3);
   }
 
   R3D.buildMap = function () {
@@ -120,74 +114,65 @@ var R3D = {};
     });
   };
 
-  function buildPath(from, to) {
-    var a = ROOM_CFG[from], b = ROOM_CFG[to];
+  function getDoorPos(aId, bId) {
+    var a = ROOM_CFG[aId], b = ROOM_CFG[bId];
+    if (!a || !b) return null;
     var dx = b.x - a.x, dz = b.z - a.z;
-    var dist = Math.sqrt(dx * dx + dz * dz);
-    if (dist < 4.1) return;
-
-    var pathW = 1.6;
-    var pMat = new THREE.MeshStandardMaterial({ color: 0xd0d0d0, roughness: 0.8 });
-    var lineMat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.15 });
-
     if (Math.abs(dx) > Math.abs(dz)) {
-      var left = Math.min(a.x, b.x) + HALF_ROOM;
-      var right = Math.max(a.x, b.x) - HALF_ROOM;
-      var pLen = right - left;
-      if (pLen < 0.3) return;
-      var p = new THREE.Mesh(new THREE.BoxGeometry(pLen, 0.08, pathW), pMat);
-      p.position.set((left + right) / 2, 0.04, a.z);
-      p.receiveShadow = true;
-      scene.add(p);
-      var dash = new THREE.Mesh(new THREE.BoxGeometry(pLen - 0.4, 0.02, 0.04), lineMat);
-      dash.position.set((left + right) / 2, 0.08, a.z);
-      scene.add(dash);
-      for (var lx = left + 0.5; lx < right - 0.3; lx += 1.5) {
-        var post = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.04, 0.4, 6), new THREE.MeshStandardMaterial({ color: 0x888888 }));
-        post.position.set(lx, 0.2, a.z + 1.1);
-        scene.add(post);
-        outdoorDecor.push(post);
-        post = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.04, 0.4, 6), new THREE.MeshStandardMaterial({ color: 0x888888 }));
-        post.position.set(lx, 0.2, a.z - 1.1);
-        scene.add(post);
-        outdoorDecor.push(post);
-      }
+      return { x: a.x + (dx > 0 ? HALF_ROOM : -HALF_ROOM), z: a.z };
     } else {
-      var bot = Math.min(a.z, b.z) + HALF_ROOM;
-      var top = Math.max(a.z, b.z) - HALF_ROOM;
-      var pLen = top - bot;
-      if (pLen < 0.3) return;
-      var p = new THREE.Mesh(new THREE.BoxGeometry(pathW, 0.08, pLen), pMat);
-      p.position.set(a.x, 0.04, (bot + top) / 2);
-      p.receiveShadow = true;
-      scene.add(p);
-      var dash = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.02, pLen - 0.4), lineMat);
-      dash.position.set(a.x, 0.08, (bot + top) / 2);
-      scene.add(dash);
-      for (var lz = bot + 0.5; lz < top - 0.3; lz += 1.5) {
-        var post = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.04, 0.4, 6), new THREE.MeshStandardMaterial({ color: 0x888888 }));
-        post.position.set(a.x + 1.1, 0.2, lz);
-        scene.add(post);
-        outdoorDecor.push(post);
-        post = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.04, 0.4, 6), new THREE.MeshStandardMaterial({ color: 0x888888 }));
-        post.position.set(a.x - 1.1, 0.2, lz);
-        scene.add(post);
-        outdoorDecor.push(post);
-      }
+      return { x: a.x, z: a.z + (dz > 0 ? HALF_ROOM : -HALF_ROOM) };
     }
+  }
+
+  function buildPath(from, to) {
+    var dA = getDoorPos(from, to), dB = getDoorPos(to, from);
+    if (!dA || !dB) return;
+
+    var dx = dB.x - dA.x, dz = dB.z - dA.z;
+    var len = Math.sqrt(dx * dx + dz * dz);
+    if (len < 0.3) return;
+
+    var mx = (dA.x + dB.x) / 2, mz = (dA.z + dB.z) / 2;
+    var ang = Math.atan2(dx, dz);
+
+    var pMat = new THREE.MeshStandardMaterial({ color: 0xd0d0d0, roughness: 0.8 });
+    var path = new THREE.Mesh(new THREE.BoxGeometry(2.2, 0.08, len), pMat);
+    path.position.set(mx, 0.04, mz);
+    path.rotation.y = ang;
+    path.receiveShadow = true;
+    scene.add(path);
+
+    var lineMat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.15 });
+    var dash = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.02, len - 0.6), lineMat);
+    dash.position.set(mx + Math.cos(ang + Math.PI / 2) * 0.4, 0.08, mz + Math.sin(ang + Math.PI / 2) * 0.4);
+    dash.rotation.y = ang;
+    scene.add(dash);
+
+    var sideMat = new THREE.MeshStandardMaterial({ color: 0x8d6e63, roughness: 0.7 });
+    [-1, 1].forEach(function (side) {
+      var sx = Math.cos(ang + Math.PI / 2) * side * 1.15;
+      var sz = Math.sin(ang + Math.PI / 2) * side * 1.15;
+      for (var d = 0.4; d < len - 0.3; d += 1.2) {
+        var post = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.05, 0.4, 6), sideMat);
+        post.position.set(mx + sx + Math.sin(ang) * (d - len / 2), 0.2, mz + sz - Math.cos(ang) * (d - len / 2));
+        scene.add(post);
+      }
+    });
   }
 
   function buildRoom(id, pos) {
     var wallColor = WALL_COLORS[id] || 0xfff8e7;
     var accent = ACCENT_COLORS[id] || 0x888888;
+    var floorColor = FLOOR_COLORS[id] || 0xc8b898;
     var room = new THREE.Group();
     room.position.set(pos.x, 0, pos.z);
 
-    buildFloor(room, accent);
+    buildFloor(room, floorColor, accent);
     buildCeiling(room);
     buildWalls(room, id, pos, wallColor, accent);
     addCeilingLight(room, accent);
-    addDecoration(room, id, accent);
+    addDecor(room, id, accent);
     addRoomLabel(room, id);
 
     scene.add(room);
@@ -195,7 +180,7 @@ var R3D = {};
 
     var bMat = new THREE.MeshStandardMaterial({ color: 0xff0000, emissive: 0xff0000, emissiveIntensity: 1 });
     var body = new THREE.Mesh(new THREE.SphereGeometry(0.15, 8, 8), bMat);
-    body.position.set(0, 0.1, -1);
+    body.position.set(0, 0.1, -1.5);
     var bodyGrp = new THREE.Group();
     bodyGrp.add(body);
     bodyGrp.visible = false;
@@ -203,35 +188,38 @@ var R3D = {};
     roomMeshes[id].bodyGrp = bodyGrp;
   }
 
-  function buildFloor(room, accent) {
-    var tileMat = new THREE.MeshStandardMaterial({ color: 0xe8dcc8, roughness: 0.6 });
-    var groutMat = new THREE.MeshStandardMaterial({ color: 0xc8b898, roughness: 0.8 });
-    for (var tx = -1.5; tx <= 1.5; tx += 1) {
-      for (var tz = -1.5; tz <= 1.5; tz += 1) {
-        var tile = new THREE.Mesh(new THREE.BoxGeometry(0.88, 0.06, 0.88), tileMat);
+  function buildFloor(room, baseColor, accent) {
+    var tileMat = new THREE.MeshStandardMaterial({ color: baseColor, roughness: 0.6 });
+    var groutMat = new THREE.MeshStandardMaterial({ color: 0xbbb0a0, roughness: 0.8 });
+    for (var tx = -2; tx <= 2; tx += 1) {
+      for (var tz = -2; tz <= 2; tz += 1) {
+        var alt = (tx + tz) % 2 === 0;
+        var c = alt ? baseColor : 0xddd5c8;
+        var tMat = new THREE.MeshStandardMaterial({ color: c, roughness: 0.6 });
+        var tile = new THREE.Mesh(new THREE.BoxGeometry(0.88, 0.06, 0.88), tMat);
         tile.position.set(tx, 0.03, tz);
         tile.receiveShadow = true;
         room.add(tile);
       }
     }
-    var borderMat = new THREE.MeshStandardMaterial({ color: accent, roughness: 0.5 });
-    var brd = new THREE.Mesh(new THREE.BoxGeometry(ROOM_SIZE + 0.2, 0.04, 0.12), borderMat);
-    brd.position.set(0, 0.07, 2.06);
+    var bMat = new THREE.MeshStandardMaterial({ color: accent, roughness: 0.5 });
+    var brd = new THREE.Mesh(new THREE.BoxGeometry(ROOM_SIZE + 0.2, 0.04, 0.12), bMat);
+    brd.position.set(0, 0.07, HALF_ROOM + 0.06);
     room.add(brd);
-    brd = new THREE.Mesh(new THREE.BoxGeometry(ROOM_SIZE + 0.2, 0.04, 0.12), borderMat);
-    brd.position.set(0, 0.07, -2.06);
+    brd = new THREE.Mesh(new THREE.BoxGeometry(ROOM_SIZE + 0.2, 0.04, 0.12), bMat);
+    brd.position.set(0, 0.07, -HALF_ROOM - 0.06);
     room.add(brd);
-    brd = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.04, ROOM_SIZE + 0.2), borderMat);
-    brd.position.set(2.06, 0.07, 0);
+    brd = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.04, ROOM_SIZE + 0.2), bMat);
+    brd.position.set(HALF_ROOM + 0.06, 0.07, 0);
     room.add(brd);
-    brd = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.04, ROOM_SIZE + 0.2), borderMat);
-    brd.position.set(-2.06, 0.07, 0);
+    brd = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.04, ROOM_SIZE + 0.2), bMat);
+    brd.position.set(-HALF_ROOM - 0.06, 0.07, 0);
     room.add(brd);
   }
 
   function buildCeiling(room) {
-    var ceilMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.6, transparent: true, opacity: 0.2 });
-    var ceil = new THREE.Mesh(new THREE.BoxGeometry(ROOM_SIZE + 0.4, 0.05, ROOM_SIZE + 0.4), ceilMat);
+    var cMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.6, transparent: true, opacity: 0.15 });
+    var ceil = new THREE.Mesh(new THREE.BoxGeometry(ROOM_SIZE + 0.4, 0.05, ROOM_SIZE + 0.4), cMat);
     ceil.position.y = WALL_H;
     room.add(ceil);
   }
@@ -250,7 +238,7 @@ var R3D = {};
 
     dirs.forEach(function (d) {
       var hasDoor = conns.some(d.connCheck);
-      var doorW = 1.0, doorH = 2.0;
+      var doorW = 1.2, doorH = 2.0;
       var hdw = doorW / 2;
       if (d.axis === 'z') {
         var wz = d.sign * HALF_ROOM;
@@ -258,13 +246,13 @@ var R3D = {};
           addWall(room, new THREE.Vector3(-(HALF_ROOM + hdw) / 2, WALL_H / 2, wz), new THREE.Vector3(HALF_ROOM - hdw, WALL_H, 0.1), wMat);
           addWall(room, new THREE.Vector3((HALF_ROOM + hdw) / 2, WALL_H / 2, wz), new THREE.Vector3(HALF_ROOM - hdw, WALL_H, 0.1), wMat);
           addWall(room, new THREE.Vector3(0, (WALL_H + doorH) / 2, wz), new THREE.Vector3(doorW, WALL_H - doorH, 0.1), wMat);
-          addWall(room, new THREE.Vector3(0, 0.1, wz), new THREE.Vector3(ROOM_SIZE, 0.15, 0.12), baseMat);
+          addWall(room, new THREE.Vector3(0, 0.1, wz), new THREE.Vector3(ROOM_SIZE, 0.12, 0.12), baseMat);
           addWall(room, new THREE.Vector3(-hdw - 0.06, doorH / 2, wz), new THREE.Vector3(0.08, doorH, 0.16), frameMat);
           addWall(room, new THREE.Vector3(hdw + 0.06, doorH / 2, wz), new THREE.Vector3(0.08, doorH, 0.16), frameMat);
           addWall(room, new THREE.Vector3(0, doorH + 0.04, wz), new THREE.Vector3(doorW + 0.12, 0.08, 0.16), frameMat);
         } else {
           addWall(room, new THREE.Vector3(0, WALL_H / 2, wz), new THREE.Vector3(ROOM_SIZE, WALL_H, 0.1), wMat);
-          addWall(room, new THREE.Vector3(0, 0.1, wz), new THREE.Vector3(ROOM_SIZE, 0.15, 0.12), baseMat);
+          addWall(room, new THREE.Vector3(0, 0.1, wz), new THREE.Vector3(ROOM_SIZE, 0.12, 0.12), baseMat);
         }
       } else {
         var wx = d.sign * HALF_ROOM;
@@ -272,13 +260,13 @@ var R3D = {};
           addWall(room, new THREE.Vector3(wx, WALL_H / 2, -(HALF_ROOM + hdw) / 2), new THREE.Vector3(0.1, WALL_H, HALF_ROOM - hdw), wMat);
           addWall(room, new THREE.Vector3(wx, WALL_H / 2, (HALF_ROOM + hdw) / 2), new THREE.Vector3(0.1, WALL_H, HALF_ROOM - hdw), wMat);
           addWall(room, new THREE.Vector3(wx, (WALL_H + doorH) / 2, 0), new THREE.Vector3(0.1, WALL_H - doorH, doorW), wMat);
-          addWall(room, new THREE.Vector3(wx, 0.1, 0), new THREE.Vector3(0.12, 0.15, ROOM_SIZE), baseMat);
+          addWall(room, new THREE.Vector3(wx, 0.1, 0), new THREE.Vector3(0.12, 0.12, ROOM_SIZE), baseMat);
           addWall(room, new THREE.Vector3(wx, doorH / 2, -hdw - 0.06), new THREE.Vector3(0.16, doorH, 0.08), frameMat);
           addWall(room, new THREE.Vector3(wx, doorH / 2, hdw + 0.06), new THREE.Vector3(0.16, doorH, 0.08), frameMat);
           addWall(room, new THREE.Vector3(wx, doorH + 0.04, 0), new THREE.Vector3(0.16, 0.08, doorW + 0.12), frameMat);
         } else {
           addWall(room, new THREE.Vector3(wx, WALL_H / 2, 0), new THREE.Vector3(0.1, WALL_H, ROOM_SIZE), wMat);
-          addWall(room, new THREE.Vector3(wx, 0.1, 0), new THREE.Vector3(0.12, 0.15, ROOM_SIZE), baseMat);
+          addWall(room, new THREE.Vector3(wx, 0.1, 0), new THREE.Vector3(0.12, 0.12, ROOM_SIZE), baseMat);
         }
       }
     });
@@ -297,157 +285,181 @@ var R3D = {};
   function addRoomLabel(room, id) {
     var ld = document.createElement('div');
     ld.textContent = ROOM_DISPLAY[id] || id;
-    ld.style.cssText = 'color:#fff;font-size:13px;font-weight:700;font-family:"Noto Sans TC",sans-serif;text-shadow:0 0 15px rgba(0,0,0,0.8);background:rgba(0,0,0,0.35);padding:2px 14px;border-radius:4px;letter-spacing:1px;border:1px solid rgba(255,255,255,0.2);pointer-events:none;';
+    ld.style.cssText = 'color:#fff;font-size:14px;font-weight:700;font-family:"Noto Sans TC",sans-serif;text-shadow:0 0 15px rgba(0,0,0,0.8);background:rgba(0,0,0,0.35);padding:2px 14px;border-radius:4px;letter-spacing:1px;border:1px solid rgba(255,255,255,0.2);pointer-events:none;';
     var label = new THREE.CSS2DObject(ld);
     label.position.set(0, WALL_H + 0.5, 0);
     room.add(label);
   }
 
-  function addDecoration(room, id, accent) {
-    var decoMat = new THREE.MeshStandardMaterial({ color: accent, roughness: 0.5 });
-    var darkMat = new THREE.MeshStandardMaterial({ color: 0x5d4037, roughness: 0.7 });
-    var whiteMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.4 });
+  function addDecor(room, id, accent) {
+    var dWood = new THREE.MeshStandardMaterial({ color: 0x5d4037, roughness: 0.7 });
+    var dWhite = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.4 });
+    var dDark = new THREE.MeshStandardMaterial({ color: 0x37474f, roughness: 0.5 });
+    var dAccent = new THREE.MeshStandardMaterial({ color: accent, roughness: 0.5 });
+    var dMetal = new THREE.MeshStandardMaterial({ color: 0x90a4ae, roughness: 0.3, metalness: 0.6 });
 
     switch (id) {
       case 'command':
-        var desk = new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.6, 0.4), darkMat);
-        desk.position.set(0.8, 0.3, 0.8);
-        room.add(desk);
-        var top = new THREE.Mesh(new THREE.BoxGeometry(0.85, 0.04, 0.45), new THREE.MeshStandardMaterial({ color: 0x8d6e63 }));
-        top.position.set(0.8, 0.62, 0.8);
-        room.add(top);
-        var flag = new THREE.Mesh(new THREE.BoxGeometry(0.01, 0.3, 0.15), new THREE.MeshStandardMaterial({ color: accent }));
-        flag.position.set(-1.0, 0.4, -1.2);
-        room.add(flag);
-        var pole = new THREE.Mesh(new THREE.CylinderGeometry(0.015, 0.015, 0.4, 4), darkMat);
-        pole.position.set(-1.0, 0.2, -1.2);
-        room.add(pole);
+        addBox(room, 1.2, 0.05, -1.0, 1.0, 0.7, 0.5, dWood);
+        addBox(room, 1.2, 0.6, -1.0, 1.05, 0.04, 0.55, new THREE.MeshStandardMaterial({ color: 0x8d6e63 }));
+        addBox(room, -1.0, 0.05, -1.2, 0.85, 0.65, 0.3, dWood);
+        addBox(room, -0.97, 0.3, -1.2, 0.02, 0.3, 0.25, new THREE.MeshStandardMaterial({ color: 0x1a237e }));
+        addBox(room, -0.6, 0.05, -1.6, 0.02, 0.5, 0.3, new THREE.MeshStandardMaterial({ color: 0x1a237e }));
+        addCyl(room, -1.6, 0.05, 1.2, 0.015, 0.6, dWood);
+        var fMat = new THREE.MeshStandardMaterial({ color: accent, emissive: accent, emissiveIntensity: 0.1 });
+        addBox(room, -1.6, 0.4, 1.2, 0.01, 0.3, 0.2, fMat);
         break;
+
       case 'medical':
-        var bed = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.2, 1.0), whiteMat);
-        bed.position.set(-0.6, 0.1, 0);
-        room.add(bed);
-        var pillow = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.08, 0.2), new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.9 }));
-        pillow.position.set(-0.6, 0.24, -0.35);
-        room.add(pillow);
-        var cross = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.25, 0.02), new THREE.MeshStandardMaterial({ color: 0xff0000 }));
-        cross.position.set(1.2, 0.8, -1.0);
-        room.add(cross);
-        var cross2 = new THREE.Mesh(new THREE.BoxGeometry(0.25, 0.2, 0.02), new THREE.MeshStandardMaterial({ color: 0xff0000 }));
-        cross2.position.set(1.2, 0.8, -1.0);
-        room.add(cross2);
-        break;
-      case 'hall':
-        var board = new THREE.Mesh(new THREE.BoxGeometry(0.9, 0.4, 0.04), new THREE.MeshStandardMaterial({ color: 0x2e7d32 }));
-        board.position.set(0, 1.0, -1.95);
-        room.add(board);
-        var frame = new THREE.Mesh(new THREE.BoxGeometry(0.94, 0.44, 0.02), darkMat);
-        frame.position.set(0, 1.0, -1.92);
-        room.add(frame);
-        break;
-      case 'comms':
-        var screen = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.4, 0.04), new THREE.MeshStandardMaterial({ color: 0x1a237e, emissive: 0x1a237e, emissiveIntensity: 0.1 }));
-        screen.position.set(-0.5, 0.8, -1.4);
-        room.add(screen);
-        var stand = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.03, 0.3, 6), darkMat);
-        stand.position.set(-0.5, 0.25, -1.4);
-        room.add(stand);
-        var base = new THREE.Mesh(new THREE.BoxGeometry(0.15, 0.03, 0.12), darkMat);
-        base.position.set(-0.5, 0.1, -1.4);
-        room.add(base);
-        break;
-      case 'power':
-        var rackMat = new THREE.MeshStandardMaterial({ color: 0x616161, roughness: 0.7 });
-        for (var ri = 0; ri < 3; ri++) {
-          var shelf = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.02, 0.4), new THREE.MeshStandardMaterial({ color: 0x757575 }));
-          shelf.position.set(-1.0 + ri * 0.35, 0.15 + ri * 0.25, 1.2);
-          room.add(shelf);
+        addBox(room, -0.5, 0.12, 0.1, 0.5, 0.15, 0.9, dWhite);
+        addBox(room, -0.5, 0.06, -0.3, 0.35, 0.04, 0.25, dWhite);
+        addBox(room, 1.3, 0.05, -1.2, 0.4, 0.5, 0.3, dWhite);
+        addBox(room, 1.3, 0.35, -1.2, 0.44, 0.02, 0.34, dMetal);
+        var crMat = new THREE.MeshStandardMaterial({ color: 0xff0000 });
+        addBox(room, 1.3, 0.65, -1.2, 0.2, 0.2, 0.02, crMat);
+        addBox(room, 1.3, 0.65, -1.2, 0.02, 0.25, 0.15, crMat);
+        addBox(room, -1.2, 0.25, 1.3, 0.5, 0.45, 0.25, dWhite);
+        for (var si = 0; si < 3; si++) {
+          addBox(room, -1.2, 0.45 + si * 0.15, 1.3, 0.44, 0.02, 0.2, new THREE.MeshStandardMaterial({ color: 0xe0e0e0 }));
         }
         break;
+
+      case 'hall':
+        addBox(room, 0, 0.5, -HALF_ROOM + 0.05, 1.0, 0.4, 0.04, new THREE.MeshStandardMaterial({ color: 0x2e7d32 }));
+        addBox(room, 0, 0.5, -HALF_ROOM + 0.03, 1.04, 0.44, 0.02, dWood);
+        addBox(room, 1.8, 0.04, 0.5, 0.2, 0.08, 0.15, new THREE.MeshStandardMaterial({ color: 0xffd54f }));
+        addBox(room, -1.8, 0.04, -1.0, 0.15, 0.45, 0.25, dWood);
+        addBox(room, -1.8, 0.3, -1.0, 0.17, 0.02, 0.27, new THREE.MeshStandardMaterial({ color: 0x1565c0 }));
+        addCyl(room, 0.5, 0.04, 1.6, 0.06, 0.08, dWood);
+        addCyl(room, 1.5, 0.04, 1.6, 0.06, 0.08, dWood);
+        addBox(room, 1.0, 0.08, 1.6, 1.2, 0.04, 0.35, dWood);
+        break;
+
+      case 'comms':
+        addBox(room, -0.3, 0.05, -1.2, 1.2, 0.7, 0.04, new THREE.MeshStandardMaterial({ color: 0x1a237e, emissive: 0x1a237e, emissiveIntensity: 0.05 }));
+        addBox(room, -0.3, 0.22, -1.6, 0.04, 0.5, 0.4, new THREE.MeshStandardMaterial({ color: 0x263238 }));
+        addCyl(room, -0.3, 0.05, -1.6, 0.025, 0.25, dMetal);
+        addBox(room, -0.3, 0.02, -1.6, 0.18, 0.02, 0.15, dDark);
+        var chMat = new THREE.MeshStandardMaterial({ color: 0x263238, roughness: 0.6 });
+        for (var ci = 0; ci < 4; ci++) {
+          var cx = 0.7 + (ci % 2) * 0.6, cz = 0.3 + Math.floor(ci / 2) * 0.5;
+          addCyl(room, cx, 0.04, cz, 0.02, 0.25, dMetal);
+          addBox(room, cx, 0.15, cz, 0.28, 0.12, 0.25, chMat);
+        }
+        break;
+
+      case 'power':
+        var rMat = new THREE.MeshStandardMaterial({ color: 0x757575, roughness: 0.6 });
+        for (var si = 0; si < 3; si++) {
+          addBox(room, -0.7 + si * 0.45, 0.1 + si * 0.2, 1.4, 0.4, 0.02, 0.5, rMat);
+          addCyl(room, -0.7 + si * 0.45, 0.05, 1.4, 0.015, 0.12, dMetal);
+          addCyl(room, -0.7 + si * 0.45, 0.05, 1.9, 0.015, 0.12, dMetal);
+        }
+        var ballMat = new THREE.MeshStandardMaterial({ color: 0xff6f00, roughness: 0.6 });
+        for (var bi = 0; bi < 3; bi++) {
+          var ball = new THREE.Mesh(new THREE.SphereGeometry(0.1, 8, 8), ballMat);
+          ball.position.set(-0.7 + bi * 0.45, 0.15, 1.65);
+          room.add(ball);
+        }
+        addBox(room, 1.2, 0.1, 0.3, 0.5, 0.15, 0.7, new THREE.MeshStandardMaterial({ color: 0xe53935 }));
+        addBox(room, 1.5, 0.3, 0.3, 0.02, 0.25, 0.1, dWhite);
+        break;
+
       case 'warehouse':
-        var boxMat = new THREE.MeshStandardMaterial({ color: 0xa1887f, roughness: 0.8 });
-        for (var bx = -0.5; bx <= 0.5; bx += 1.0) {
-          for (var bz = 0.5; bz <= 1.0; bz += 0.5) {
-            var box = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.2, 0.3), boxMat);
-            box.position.set(bx, 0.1 + bz * 0.1, bz * 0.8);
-            room.add(box);
+        var bxMat = new THREE.MeshStandardMaterial({ color: 0xa1887f, roughness: 0.8 });
+        var bxMat2 = new THREE.MeshStandardMaterial({ color: 0x8d6e63, roughness: 0.8 });
+        for (var bx = -1.0; bx <= 1.5; bx += 1.25) {
+          for (var bz = 0.5; bz <= 1.5; bz += 0.5) {
+            var h = 0.15 + (bx + bz) * 0.03;
+            var m = (bx + bz) % 2 < 1 ? bxMat : bxMat2;
+            addBox(room, bx, h, bz * 0.8, 0.4, 0.2, 0.35, m);
           }
         }
+        var brMat = new THREE.MeshStandardMaterial({ color: 0xce93d8 });
+        addCyl(room, -1.5, 0.05, -1.2, 0.02, 0.5, dMetal);
+        addBox(room, -1.5, 0.3, -1.2, 0.3, 0.02, 0.02, brMat);
         break;
+
       case 'dorm':
-        var pianoMat = new THREE.MeshStandardMaterial({ color: 0x212121, roughness: 0.3 });
-        var piano = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.35, 0.4), pianoMat);
-        piano.position.set(-0.8, 0.18, -1.0);
-        room.add(piano);
-        var keys = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.03, 0.12), whiteMat);
-        keys.position.set(-0.8, 0.36, -0.82);
-        room.add(keys);
-        var benchMat = new THREE.MeshStandardMaterial({ color: 0x5d4037, roughness: 0.7 });
-        var bench = new THREE.Mesh(new THREE.BoxGeometry(0.35, 0.15, 0.2), benchMat);
-        bench.position.set(-0.8, 0.08, -1.6);
-        room.add(bench);
+        var pMat = new THREE.MeshStandardMaterial({ color: 0x212121, roughness: 0.3 });
+        addBox(room, -0.7, 0.15, -1.0, 0.8, 0.2, 0.5, pMat);
+        addBox(room, -0.7, 0.3, -1.0, 0.85, 0.04, 0.55, new THREE.MeshStandardMaterial({ color: 0x424242 }));
+        addBox(room, -0.7, 0.35, -0.7, 0.7, 0.02, 0.12, dWhite);
+        var keyMat = new THREE.MeshStandardMaterial({ color: 0xffffff });
+        for (var ki = 0; ki < 7; ki++) {
+          addBox(room, -1.0 + ki * 0.1, 0.35, -0.64, 0.06, 0.02, 0.06, keyMat);
+        }
+        addBox(room, -0.7, 0.06, -1.8, 0.4, 0.08, 0.25, dWood);
+        var muMat = new THREE.MeshStandardMaterial({ color: 0xffab00 });
+        addCyl(room, 1.7, 0.05, -0.8, 0.02, 0.5, dMetal);
+        addBox(room, 1.7, 0.3, -0.8, 0.5, 0.02, 0.02, new THREE.MeshStandardMaterial({ color: accent }));
         break;
     }
+  }
 
-    var noticeMat = new THREE.MeshStandardMaterial({ color: 0xfff9c4 });
-    var note = new THREE.Mesh(new THREE.BoxGeometry(0.15, 0.12, 0.02), noticeMat);
-    note.position.set(1.2, 0.6, -1.95);
-    room.add(note);
+  function addBox(room, x, y, z, sx, sy, sz, mat) {
+    var m = new THREE.Mesh(new THREE.BoxGeometry(sx, sy, sz), mat);
+    m.position.set(x, y, z);
+    m.castShadow = true;
+    m.receiveShadow = true;
+    room.add(m);
+  }
+
+  function addCyl(room, x, y, z, r, h, mat) {
+    var m = new THREE.Mesh(new THREE.CylinderGeometry(r, r, h, 6), mat);
+    m.position.set(x, y + h / 2, z);
+    m.castShadow = true;
+    room.add(m);
   }
 
   function buildOutdoorDecor() {
     var treePos = [
-      [-10, -2], [10, -2], [-10, 10], [10, 10], [-3, -13], [3, -13],
-      [-10, 5], [10, 5], [-7, -8], [7, -8], [-8, 14], [8, 14],
+      [-14, -2], [14, -2], [-14, 11], [14, 11], [-5, -16], [5, -16],
+      [-14, 5], [14, 5], [-7, -10], [7, -10], [-13, 17], [12, 17],
+      [-4, -8], [4, -8], [-12, 8],
     ];
     treePos.forEach(function (p) { makeTree(p[0], p[1]); });
-    var fenceMat = new THREE.MeshStandardMaterial({ color: 0x8d6e63, roughness: 0.7 });
-    var fencePos = [
-      [-12, 0, 0, 24], [12, 0, 0, 24], [0, -14, 1, 18], [0, 14, 1, 18],
+
+    var fMat = new THREE.MeshStandardMaterial({ color: 0x8d6e63, roughness: 0.7 });
+    var fH = [
+      [-15, 0, 0, 30], [15, 0, 0, 30], [0, -17, 1, 20], [0, 17, 1, 20],
     ];
-    fencePos.forEach(function (f) {
-      var horizontal = f[2];
-      if (horizontal) {
-        var rail = new THREE.Mesh(new THREE.BoxGeometry(f[3], 0.06, 0.04), fenceMat);
-        rail.position.set(f[0], 0.3, f[1]);
-        scene.add(rail);
-        rail = new THREE.Mesh(new THREE.BoxGeometry(f[3], 0.06, 0.04), fenceMat);
-        rail.position.set(f[0], 0.7, f[1]);
-        scene.add(rail);
-        for (var pi = -f[3]/2 + 0.3; pi < f[3]/2 - 0.3; pi += 0.6) {
-          var post = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.8, 0.04), fenceMat);
-          post.position.set(f[0] + pi, 0.4, f[1]);
-          scene.add(post);
-        }
-      } else {
-        var rail = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.06, f[3]), fenceMat);
-        rail.position.set(f[0], 0.3, f[1]);
-        scene.add(rail);
-        rail = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.06, f[3]), fenceMat);
-        rail.position.set(f[0], 0.7, f[1]);
-        scene.add(rail);
-        for (var pi2 = -f[3]/2 + 0.3; pi2 < f[3]/2 - 0.3; pi2 += 0.6) {
-          var post = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.8, 0.04), fenceMat);
-          post.position.set(f[0], 0.4, f[1] + pi2);
-          scene.add(post);
-        }
+    fH.forEach(function (f) {
+      var hz = f[2] ? f[3] : 0.04;
+      var hx = f[2] ? 0.04 : f[3];
+      var rail1 = new THREE.Mesh(new THREE.BoxGeometry(hx, 0.06, hz), fMat);
+      rail1.position.set(f[0], 0.3, f[1]);
+      scene.add(rail1);
+      var rail2 = new THREE.Mesh(new THREE.BoxGeometry(hx, 0.06, hz), fMat);
+      rail2.position.set(f[0], 0.7, f[1]);
+      scene.add(rail2);
+      var step = 0.6;
+      var count = Math.floor(f[3] / step);
+      for (var k = 0; k < count; k++) {
+        var off = -f[3] / 2 + 0.3 + k * step;
+        var pst = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.8, 0.04), fMat);
+        pst.position.set(f[2] ? f[0] + off : f[0], 0.4, f[2] ? f[1] : f[1] + off);
+        scene.add(pst);
       }
     });
   }
 
   function makeTree(x, z) {
-    var trunkMat = new THREE.MeshStandardMaterial({ color: 0x6d4c41, roughness: 0.9 });
-    var leafMat = new THREE.MeshStandardMaterial({ color: 0x4caf50, roughness: 0.8 });
-    var trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.08, 0.6, 6), trunkMat);
-    trunk.position.set(x, 0.3, z);
+    var tMat = new THREE.MeshStandardMaterial({ color: 0x6d4c41, roughness: 0.9 });
+    var lMat = new THREE.MeshStandardMaterial({ color: 0x4caf50, roughness: 0.8 });
+    var lMat2 = new THREE.MeshStandardMaterial({ color: 0x66bb6a, roughness: 0.8 });
+    var trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.1, 0.7, 6), tMat);
+    trunk.position.set(x, 0.35, z);
+    trunk.castShadow = true;
     scene.add(trunk);
-    var leaf1 = new THREE.Mesh(new THREE.ConeGeometry(0.35, 0.35, 6), leafMat);
-    leaf1.position.set(x, 0.7, z);
-    scene.add(leaf1);
-    var leaf2 = new THREE.Mesh(new THREE.ConeGeometry(0.25, 0.3, 6), new THREE.MeshStandardMaterial({ color: 0x66bb6a, roughness: 0.8 }));
-    leaf2.position.set(x, 0.95, z);
-    scene.add(leaf2);
-    outdoorDecor.push(trunk, leaf1, leaf2);
+    var l1 = new THREE.Mesh(new THREE.ConeGeometry(0.4, 0.4, 6), lMat);
+    l1.position.set(x, 0.8, z);
+    l1.castShadow = true;
+    scene.add(l1);
+    var l2 = new THREE.Mesh(new THREE.ConeGeometry(0.3, 0.35, 6), lMat2);
+    l2.position.set(x, 1.1, z);
+    l2.castShadow = true;
+    scene.add(l2);
   }
 
   function addWall(parent, pos, scale, mat) {
@@ -461,23 +473,17 @@ var R3D = {};
     document.addEventListener('keydown', function (e) { keys[e.key.toLowerCase()] = true; if (e.key.toLowerCase() === 'e') onInteract(); });
     document.addEventListener('keyup', function (e) { keys[e.key.toLowerCase()] = false; });
     document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && isLocked) document.exitPointerLock(); });
-
-    renderer.domElement.addEventListener('click', function () {
-      if (!isLocked) renderer.domElement.requestPointerLock();
-    });
-
+    renderer.domElement.addEventListener('click', function () { if (!isLocked) renderer.domElement.requestPointerLock(); });
     document.addEventListener('pointerlockchange', function () {
       isLocked = document.pointerLockElement === renderer.domElement;
       if (isLocked && lockInstructionEl) lockInstructionEl.style.display = 'none';
     });
-
     document.addEventListener('mousemove', function (e) {
       if (!isLocked) return;
       yaw -= e.movementX * mouseSens;
       pitch -= e.movementY * mouseSens;
       pitch = Math.max(-Math.PI / 2.2, Math.min(Math.PI / 2.2, pitch));
     });
-
     lockInstructionEl = document.createElement('div');
     lockInstructionEl.textContent = '點擊畫面以控制視角 - WASD 移動 - Shift 衝刺';
     lockInstructionEl.style.cssText = 'position:absolute;bottom:40%;left:50%;transform:translateX(-50%);color:#fff;font-size:18px;font-weight:700;font-family:"Noto Sans TC",sans-serif;background:rgba(0,0,0,0.6);padding:12px 28px;border-radius:10px;border:2px solid rgba(255,255,255,0.3);pointer-events:none;z-index:20;text-align:center;';
@@ -505,9 +511,8 @@ var R3D = {};
 
   function updatePlayer(dt) {
     if (!dt || dt > 0.1) dt = 0.016;
-
     if (transitionProgress >= 0) {
-      transitionProgress += dt * 0.8;
+      transitionProgress += dt * 0.7;
       if (transitionProgress >= 1) {
         transitionProgress = -1;
         currentRoomId = transitionTo;
@@ -521,7 +526,6 @@ var R3D = {};
       camera.position.copy(playerPos);
       return;
     }
-
     var forward = new THREE.Vector3(-Math.sin(yaw), 0, -Math.cos(yaw));
     var right = new THREE.Vector3(Math.cos(yaw), 0, -Math.sin(yaw));
     var move = new THREE.Vector3();
@@ -534,7 +538,6 @@ var R3D = {};
       if (keys['shift']) move.multiplyScalar(1.6);
     }
     playerPos.add(move);
-
     var roomData = ROOM_CFG[currentRoomId];
     if (roomData) {
       playerPos.x = Math.max(roomData.x - CLAMP, Math.min(roomData.x + CLAMP, playerPos.x));
@@ -545,7 +548,6 @@ var R3D = {};
     camera.rotation.order = 'YXZ';
     camera.rotation.y = yaw;
     camera.rotation.x = pitch;
-
     var conns = ROOM_CONNS[currentRoomId] || [];
     for (var i = 0; i < conns.length; i++) {
       var to = conns[i];
@@ -562,7 +564,6 @@ var R3D = {};
         break;
       }
     }
-
     if (spotLight.visible) {
       spotLight.target.position.copy(playerPos);
       spotLight.target.position.y = 0;
@@ -625,12 +626,12 @@ var R3D = {};
   R3D.setPowerOutage = function (active, team) {
     if (active && team !== 'bad') {
       scene.background = new THREE.Color(0x000011);
-      scene.fog = new THREE.Fog(0x000011, 5, 15);
+      scene.fog = new THREE.Fog(0x000011, 4, 15);
       ambLight.intensity = 0.05; dirLight.intensity = 0.05;
       spotLight.visible = true;
     } else {
       scene.background = new THREE.Color(0x87ceeb);
-      scene.fog = new THREE.Fog(0x87ceeb, 20, 35);
+      scene.fog = new THREE.Fog(0x87ceeb, 25, 40);
       ambLight.intensity = 0.9; dirLight.intensity = 1.2;
       spotLight.visible = false;
     }
